@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: planwise-backend
+    runtime: python
+    plan: free
+    buildCommand: |
+      pip install --upgrade pip
+      pip install --no-cache-dir -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
