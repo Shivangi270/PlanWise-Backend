@@ -59,12 +59,11 @@ async def generate_plan(request: PlanRequest):
                 content={"error": "GEMINI_API_KEY is not configured on the server"}
             )
         
-        # Configure Gemini
+        # Configure Gemini with the API key
         genai.configure(api_key=GEMINI_API_KEY)
-        logger.info(f"Credentials configured: {genai.get_default_credentials()}")
         logger.info(f"Generating plan for goal: {request.goal}")
         
-        # Test the API key first
+        # Test the model loading
         try:
             model = genai.GenerativeModel('gemini-pro')
             logger.info("Gemini model loaded successfully")
