@@ -61,6 +61,7 @@ async def generate_plan(request: PlanRequest):
         
         # Configure Gemini
         genai.configure(api_key=GEMINI_API_KEY)
+        logger.info(f"Credentials configured: {genai.get_default_credentials()}")
         logger.info(f"Generating plan for goal: {request.goal}")
         
         # Test the API key first
