@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import os
 import traceback
 from typing import Optional
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 import logging
 
@@ -59,20 +59,9 @@ async def generate_plan(request: PlanRequest):
                 content={"error": "GEMINI_API_KEY is not configured on the server"}
             )
         
-        # Configure Gemini with the API key
-        genai.configure(api_key=GEMINI_API_KEY)
+        # Initialize the new GenAI client with the API key
+        client = genai.Client(api_key=GEMINI_API_KEY)
         logger.info(f"Generating plan for goal: {request.goal}")
-        
-        # Test the model loading
-        try:
-            model = genai.GenerativeModel('gemini-pro')
-            logger.info("Gemini model loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load Gemini model: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Gemini model error: {str(e)}"}
-            )
         
         prompt = f"""
 You are PlanWise, a friendly and intelligent AI planning assistant.
@@ -92,10 +81,13 @@ Generate a structured plan with:
 Make it realistic and actionable. Use emojis for visual appeal.
 """
         
-        logger.info("Sending request to Gemini API...")
+        logger.info("Sending request to Gemini API using new google-genai SDK...")
         
         try:
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=prompt
+            )
             logger.info(f"Gemini API response received, length: {len(response.text)}")
             return {"plan": response.text, "status": "success"}
         except Exception as e:
@@ -124,10 +116,8 @@ async def review_plan(request: PlanReviewRequest):
                 content={"error": "GEMINI_API_KEY is not configured on the server"}
             )
         
-        genai.configure(api_key=GEMINI_API_KEY)
+        client = genai.Client(api_key=GEMINI_API_KEY)
         logger.info(f"Reviewing plan for goal: {request.goal}")
-        
-        model = genai.GenerativeModel('gemini-pro')
         
         prompt = f"""
 You are PlanWise Review AI. Critically analyze the following plan:
@@ -152,7 +142,10 @@ Keep tone encouraging and helpful.
 """
         
         logger.info("Sending review request to Gemini API...")
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=prompt
+        )
         logger.info("Gemini API review response received")
         
         return {"review": response.text, "status": "success"}
