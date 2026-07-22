@@ -10,3 +10,11 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false
+      - key: GEMINI_API_KEY
+        value: AQ.Ab8RN6LPFLLdcfh6SCZJWhPdHuMeIUUKPox00tGb3N66FHrzow
+      - key: GOOGLE_GENAI_USE_VERTEXAI
+        value: true
+      - key: GOOGLE_CLOUD_PROJECT
+        value: gen-lang-client-0975816225
+      - key: GOOGLE_CLOUD_LOCATION
+        value: asia-south2
