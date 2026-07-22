@@ -1,29 +1,37 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import os
-import json
+import traceback
 from typing import Optional
-import openai
 import google.generativeai as genai
 from dotenv import load_dotenv
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 app = FastAPI(title="PlanWise API", description="AI-powered planning assistant")
 
-# CORS - Allow your app to call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development only
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure AI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Get API key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+logger.info(f"API Key present: {bool(GEMINI_API_KEY)}")
+logger.info(f"API Key first 10 chars: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'None'}")
+
+if not GEMINI_API_KEY:
+    logger.error("GEMINI_API_KEY not set in environment variables")
 
 # Models
 class PlanRequest(BaseModel):
@@ -37,136 +45,100 @@ class PlanReviewRequest(BaseModel):
     plan: str
     goal: str
 
-# Helper function: Generate Plan using OpenAI
-def generate_plan_with_openai(goal: str, deadline: int, daily_hours: int, role: str, topics: str):
-    openai.api_key = OPENAI_API_KEY
-    
-    prompt = f"""
-You are PlanWise, a friendly and intelligent AI planning assistant.
-You help users create realistic, achievable plans for their goals.
-
-User Information:
-- Role: {role}
-- Goal: {goal}
-- Deadline: {deadline} days
-- Daily Available Hours: {daily_hours} hours
-- Topics/Subjects: {topics if topics else 'Not specified'}
-
-Your task:
-1. Generate a structured plan with daily/weekly breakdown
-2. Make it realistic and achievable
-3. Include tips for success
-
-Format your response as:
-## 📋 YOUR PLAN: {goal}
-### ⏰ Timeline: {deadline} days
-### 📅 Daily Hours: {daily_hours}
-
-### 📆 Weekly Breakdown:
-- Week 1: ...
-- Week 2: ...
-...
-
-### 📋 Daily Schedule:
-- Day 1: ...
-- Day 2: ...
-...
-
-### 💡 Tips for Success:
-1. ...
-2. ...
-3. ...
-"""
-    
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful planning assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=1500
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenAI Error: {str(e)}")
-
-# Helper function: Generate Plan using Gemini
-def generate_plan_with_gemini(goal: str, deadline: int, daily_hours: int, role: str, topics: str):
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
-    
-    prompt = f"""
-You are PlanWise, a friendly and intelligent AI planning assistant.
-You help users create realistic, achievable plans for their goals.
-
-User Information:
-- Role: {role}
-- Goal: {goal}
-- Deadline: {deadline} days
-- Daily Available Hours: {daily_hours} hours
-- Topics/Subjects: {topics if topics else 'Not specified'}
-
-Generate a structured plan with weekly breakdown, daily schedule, and tips for success.
-Make it realistic and achievable.
-"""
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gemini Error: {str(e)}")
-
-# API Endpoints
 @app.get("/")
 def read_root():
     return {"message": "PlanWise API is running!", "status": "healthy"}
 
 @app.post("/generate-plan")
-def generate_plan(request: PlanRequest):
-    """
-    Generate a personalized plan using AI
-    """
+async def generate_plan(request: PlanRequest):
     try:
-        if OPENAI_API_KEY:
-            plan = generate_plan_with_openai(
-                request.goal,
-                request.deadline,
-                request.daily_hours,
-                request.role,
-                request.topics or ""
+        if not GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY is missing")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "GEMINI_API_KEY is not configured on the server"}
             )
-        elif GEMINI_API_KEY:
-            plan = generate_plan_with_gemini(
-                request.goal,
-                request.deadline,
-                request.daily_hours,
-                request.role,
-                request.topics or ""
-            )
-        else:
-            raise HTTPException(status_code=500, detail="No AI API key configured")
         
-        return {"plan": plan, "status": "success"}
+        # Configure Gemini
+        genai.configure(api_key=GEMINI_API_KEY)
+        logger.info(f"Generating plan for goal: {request.goal}")
+        
+        # Test the API key first
+        try:
+            model = genai.GenerativeModel('gemini-pro')
+            logger.info("Gemini model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load Gemini model: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Gemini model error: {str(e)}"}
+            )
+        
+        prompt = f"""
+You are PlanWise, a friendly and intelligent AI planning assistant.
+Create a detailed study/plan for the following goal:
+
+Role: {request.role}
+Goal: {request.goal}
+Deadline: {request.deadline} days
+Daily Available Hours: {request.daily_hours} hours
+Topics: {request.topics if request.topics else 'Not specified'}
+
+Generate a structured plan with:
+1. Weekly breakdown of topics
+2. Daily schedule
+3. Tips for success
+
+Make it realistic and actionable. Use emojis for visual appeal.
+"""
+        
+        logger.info("Sending request to Gemini API...")
+        
+        try:
+            response = model.generate_content(prompt)
+            logger.info(f"Gemini API response received, length: {len(response.text)}")
+            return {"plan": response.text, "status": "success"}
+        except Exception as e:
+            logger.error(f"Gemini API call failed: {str(e)}")
+            logger.error(traceback.format_exc())
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Gemini API error: {str(e)}"}
+            )
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Unexpected error in generate_plan: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Server error: {str(e)}"}
+        )
 
 @app.post("/review-plan")
-def review_plan(request: PlanReviewRequest):
-    """
-    Review and suggest improvements for a plan
-    """
-    prompt = f"""
-You are PlanWise Review AI. Critically analyze the following plan.
+async def review_plan(request: PlanReviewRequest):
+    try:
+        if not GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY is missing")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "GEMINI_API_KEY is not configured on the server"}
+            )
+        
+        genai.configure(api_key=GEMINI_API_KEY)
+        logger.info(f"Reviewing plan for goal: {request.goal}")
+        
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"""
+You are PlanWise Review AI. Critically analyze the following plan:
+
+Goal: {request.goal}
 
 Plan:
 {request.plan}
 
-Goal: {request.goal}
-
 Analyze:
-1. Is the plan realistic given the timeline?
+1. Is this plan realistic given the timeline?
 2. Are the daily hours achievable?
 3. Is the workload balanced?
 4. Are there any gaps or overlaps?
@@ -176,33 +148,22 @@ Provide:
 - Suggestions: Specific improvements
 - Optimized Approach: How to make it better
 
-Keep tone encouraging and helpful, not critical.
+Keep tone encouraging and helpful.
 """
-    
-    try:
-        if OPENAI_API_KEY:
-            openai.api_key = OPENAI_API_KEY
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful planning review assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1000
-            )
-            review = response.choices[0].message.content
-        elif GEMINI_API_KEY:
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel('gemini-pro')
-            response = model.generate_content(prompt)
-            review = response.text
-        else:
-            raise HTTPException(status_code=500, detail="No AI API key configured")
         
-        return {"review": review, "status": "success"}
+        logger.info("Sending review request to Gemini API...")
+        response = model.generate_content(prompt)
+        logger.info("Gemini API review response received")
+        
+        return {"review": response.text, "status": "success"}
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in review_plan: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Review error: {str(e)}"}
+        )
 
 if __name__ == "__main__":
     import uvicorn
