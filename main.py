@@ -4,8 +4,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import os
 import traceback
+import json
 from typing import Optional
 from google import genai
+from google.oauth2 import service_account
 from dotenv import load_dotenv
 import logging
 
@@ -25,13 +27,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get API key
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-logger.info(f"API Key present: {bool(GEMINI_API_KEY)}")
-logger.info(f"API Key first 10 chars: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'None'}")
+# Get credentials from environment variable
+credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Still used as fallback
 
-if not GEMINI_API_KEY:
-    logger.error("GEMINI_API_KEY not set in environment variables")
+logger.info(f"Credentials JSON present: {bool(credentials_json)}")
+logger.info(f"API Key present: {bool(GEMINI_API_KEY)}")
+
+if not credentials_json and not GEMINI_API_KEY:
+    logger.error("No credentials or API key set in environment variables")
 
 # Models
 class PlanRequest(BaseModel):
@@ -52,15 +56,30 @@ def read_root():
 @app.post("/generate-plan")
 async def generate_plan(request: PlanRequest):
     try:
-        if not GEMINI_API_KEY:
-            logger.error("GEMINI_API_KEY is missing")
+        # Initialize the client based on available credentials
+        if credentials_json:
+            # Use service account credentials
+            try:
+                creds_dict = json.loads(credentials_json)
+                credentials = service_account.Credentials.from_service_account_info(creds_dict)
+                client = genai.Client(credentials=credentials)
+                logger.info("Using service account credentials")
+            except Exception as e:
+                logger.error(f"Failed to parse credentials JSON: {str(e)}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": f"Credentials error: {str(e)}"}
+                )
+        elif GEMINI_API_KEY:
+            # Fallback to API key (for non-Vertex endpoints)
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            logger.info("Using API key")
+        else:
             return JSONResponse(
                 status_code=500,
-                content={"error": "GEMINI_API_KEY is not configured on the server"}
+                content={"error": "No credentials available"}
             )
         
-        # Initialize the new GenAI client with the API key
-        client = genai.Client(api_key=GEMINI_API_KEY)
         logger.info(f"Generating plan for goal: {request.goal}")
         
         prompt = f"""
@@ -81,25 +100,17 @@ Generate a structured plan with:
 Make it realistic and actionable. Use emojis for visual appeal.
 """
         
-        logger.info("Sending request to Gemini API using new google-genai SDK...")
+        logger.info("Sending request to Gemini API...")
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=prompt
+        )
+        logger.info("Gemini API response received")
         
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
-                contents=prompt
-            )
-            logger.info(f"Gemini API response received, length: {len(response.text)}")
-            return {"plan": response.text, "status": "success"}
-        except Exception as e:
-            logger.error(f"Gemini API call failed: {str(e)}")
-            logger.error(traceback.format_exc())
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Gemini API error: {str(e)}"}
-            )
+        return {"plan": response.text, "status": "success"}
         
     except Exception as e:
-        logger.error(f"Unexpected error in generate_plan: {str(e)}")
+        logger.error(f"Error in generate_plan: {str(e)}")
         logger.error(traceback.format_exc())
         return JSONResponse(
             status_code=500,
@@ -109,14 +120,28 @@ Make it realistic and actionable. Use emojis for visual appeal.
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
     try:
-        if not GEMINI_API_KEY:
-            logger.error("GEMINI_API_KEY is missing")
+        # Initialize the client based on available credentials
+        if credentials_json:
+            try:
+                creds_dict = json.loads(credentials_json)
+                credentials = service_account.Credentials.from_service_account_info(creds_dict)
+                client = genai.Client(credentials=credentials)
+                logger.info("Using service account credentials for review")
+            except Exception as e:
+                logger.error(f"Failed to parse credentials JSON for review: {str(e)}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": f"Credentials error: {str(e)}"}
+                )
+        elif GEMINI_API_KEY:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            logger.info("Using API key for review")
+        else:
             return JSONResponse(
                 status_code=500,
-                content={"error": "GEMINI_API_KEY is not configured on the server"}
+                content={"error": "No credentials available"}
             )
         
-        client = genai.Client(api_key=GEMINI_API_KEY)
         logger.info(f"Reviewing plan for goal: {request.goal}")
         
         prompt = f"""
