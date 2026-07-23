@@ -29,7 +29,7 @@ app.add_middleware(
 
 # Get credentials from environment variable
 credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Still used as fallback
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 logger.info(f"Credentials JSON present: {bool(credentials_json)}")
 logger.info(f"API Key present: {bool(GEMINI_API_KEY)}")
@@ -49,6 +49,40 @@ class PlanReviewRequest(BaseModel):
     plan: str
     goal: str
 
+def get_genai_client():
+    """Initialize and return a GenAI client with proper credentials"""
+    if credentials_json:
+        try:
+            # Parse the service account JSON
+            creds_dict = json.loads(credentials_json)
+            
+            # Create credentials with the correct OAuth scope for Vertex AI
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_dict,
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+            
+            # Use Vertex AI endpoint
+            client = genai.Client(
+                credentials=credentials,
+                vertexai=True,
+                project=os.getenv("GOOGLE_CLOUD_PROJECT", "gen-lang-client-0975816225"),
+                location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+            )
+            logger.info("Using service account credentials with Vertex AI")
+            return client
+        except Exception as e:
+            logger.error(f"Failed to create client with service account: {str(e)}")
+            raise
+    
+    elif GEMINI_API_KEY:
+        # Fallback to API key
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        logger.info("Using API key")
+        return client
+    else:
+        raise Exception("No credentials available")
+
 @app.get("/")
 def read_root():
     return {"message": "PlanWise API is running!", "status": "healthy"}
@@ -56,29 +90,7 @@ def read_root():
 @app.post("/generate-plan")
 async def generate_plan(request: PlanRequest):
     try:
-        # Initialize the client based on available credentials
-        if credentials_json:
-            # Use service account credentials
-            try:
-                creds_dict = json.loads(credentials_json)
-                credentials = service_account.Credentials.from_service_account_info(creds_dict)
-                client = genai.Client(credentials=credentials)
-                logger.info("Using service account credentials")
-            except Exception as e:
-                logger.error(f"Failed to parse credentials JSON: {str(e)}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Credentials error: {str(e)}"}
-                )
-        elif GEMINI_API_KEY:
-            # Fallback to API key (for non-Vertex endpoints)
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            logger.info("Using API key")
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "No credentials available"}
-            )
+        client = get_genai_client()
         
         logger.info(f"Generating plan for goal: {request.goal}")
         
@@ -120,27 +132,7 @@ Make it realistic and actionable. Use emojis for visual appeal.
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
     try:
-        # Initialize the client based on available credentials
-        if credentials_json:
-            try:
-                creds_dict = json.loads(credentials_json)
-                credentials = service_account.Credentials.from_service_account_info(creds_dict)
-                client = genai.Client(credentials=credentials)
-                logger.info("Using service account credentials for review")
-            except Exception as e:
-                logger.error(f"Failed to parse credentials JSON for review: {str(e)}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Credentials error: {str(e)}"}
-                )
-        elif GEMINI_API_KEY:
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            logger.info("Using API key for review")
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "No credentials available"}
-            )
+        client = get_genai_client()
         
         logger.info(f"Reviewing plan for goal: {request.goal}")
         
