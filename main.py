@@ -4,10 +4,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import os
 import traceback
-import json
 from typing import Optional
-from google import genai
-from google.oauth2 import service_account
+from openai import OpenAI
 from dotenv import load_dotenv
 import logging
 
@@ -27,15 +25,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get credentials from environment variable
-credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Get API key from environment
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+logger.info(f"DeepSeek API Key present: {bool(DEEPSEEK_API_KEY)}")
+logger.info(f"API Key first 10 chars: {DEEPSEEK_API_KEY[:10] if DEEPSEEK_API_KEY else 'None'}")
 
-logger.info(f"Credentials JSON present: {bool(credentials_json)}")
-logger.info(f"API Key present: {bool(GEMINI_API_KEY)}")
+if not DEEPSEEK_API_KEY:
+    logger.error("DEEPSEEK_API_KEY not set in environment variables")
 
-if not credentials_json and not GEMINI_API_KEY:
-    logger.error("No credentials or API key set in environment variables")
+# Initialize DeepSeek client with OpenAI SDK
+def get_deepseek_client():
+    if not DEEPSEEK_API_KEY:
+        return None
+    try:
+        client = OpenAI(
+            api_key=DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com"
+        )
+        logger.info("DeepSeek client initialized successfully")
+        return client
+    except Exception as e:
+        logger.error(f"Failed to initialize DeepSeek client: {str(e)}")
+        return None
 
 # Models
 class PlanRequest(BaseModel):
@@ -49,40 +60,7 @@ class PlanReviewRequest(BaseModel):
     plan: str
     goal: str
 
-def get_genai_client():
-    """Initialize and return a GenAI client with proper credentials"""
-    if credentials_json:
-        try:
-            # Parse the service account JSON
-            creds_dict = json.loads(credentials_json)
-            
-            # Create credentials with the correct OAuth scope for Vertex AI
-            credentials = service_account.Credentials.from_service_account_info(
-                creds_dict,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
-            )
-            
-            # Use Vertex AI endpoint
-            client = genai.Client(
-                credentials=credentials,
-                vertexai=True,
-                project=os.getenv("GOOGLE_CLOUD_PROJECT", "gen-lang-client-0975816225"),
-                location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-            )
-            logger.info("Using service account credentials with Vertex AI")
-            return client
-        except Exception as e:
-            logger.error(f"Failed to create client with service account: {str(e)}")
-            raise
-    
-    elif GEMINI_API_KEY:
-        # Fallback to API key
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        logger.info("Using API key")
-        return client
-    else:
-        raise Exception("No credentials available")
-
+# API Endpoints
 @app.get("/")
 def read_root():
     return {"message": "PlanWise API is running!", "status": "healthy"}
@@ -90,7 +68,12 @@ def read_root():
 @app.post("/generate-plan")
 async def generate_plan(request: PlanRequest):
     try:
-        client = get_genai_client()
+        client = get_deepseek_client()
+        if not client:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "DeepSeek API key not configured"}
+            )
         
         logger.info(f"Generating plan for goal: {request.goal}")
         
@@ -112,17 +95,31 @@ Generate a structured plan with:
 Make it realistic and actionable. Use emojis for visual appeal.
 """
         
-        logger.info("Sending request to Gemini API...")
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-exp",
-            contents=prompt
-        )
-        logger.info("Gemini API response received")
+        logger.info("Sending request to DeepSeek API...")
         
-        return {"plan": response.text, "status": "success"}
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-v4-flash",
+                messages=[
+                    {"role": "system", "content": "You are a helpful planning assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=2000
+            )
+            plan_text = response.choices[0].message.content
+            logger.info(f"DeepSeek API response received, length: {len(plan_text)}")
+            return {"plan": plan_text, "status": "success"}
+        except Exception as e:
+            logger.error(f"DeepSeek API call failed: {str(e)}")
+            logger.error(traceback.format_exc())
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"DeepSeek API error: {str(e)}"}
+            )
         
     except Exception as e:
-        logger.error(f"Error in generate_plan: {str(e)}")
+        logger.error(f"Unexpected error in generate_plan: {str(e)}")
         logger.error(traceback.format_exc())
         return JSONResponse(
             status_code=500,
@@ -132,7 +129,12 @@ Make it realistic and actionable. Use emojis for visual appeal.
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
     try:
-        client = get_genai_client()
+        client = get_deepseek_client()
+        if not client:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "DeepSeek API key not configured"}
+            )
         
         logger.info(f"Reviewing plan for goal: {request.goal}")
         
@@ -158,14 +160,20 @@ Provide:
 Keep tone encouraging and helpful.
 """
         
-        logger.info("Sending review request to Gemini API...")
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-exp",
-            contents=prompt
+        logger.info("Sending review request to DeepSeek API...")
+        response = client.chat.completions.create(
+            model="deepseek-v4-flash",
+            messages=[
+                {"role": "system", "content": "You are a helpful planning review assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1000
         )
-        logger.info("Gemini API review response received")
+        review_text = response.choices[0].message.content
+        logger.info("DeepSeek API review response received")
         
-        return {"review": response.text, "status": "success"}
+        return {"review": review_text, "status": "success"}
         
     except Exception as e:
         logger.error(f"Error in review_plan: {str(e)}")
