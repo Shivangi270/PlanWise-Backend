@@ -5,14 +5,8 @@ services:
     plan: free
     buildCommand: |
       pip install --upgrade pip
-      pip install --no-cache-dir -r requirements.txt
+      pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
     envVars:
-      - key: GEMINI_API_KEY
+      - key: DEEPSEEK_API_KEY
         sync: false
-      - key: GOOGLE_GENAI_USE_VERTEXAI
-        value: true
-      - key: GOOGLE_CLOUD_PROJECT
-        value: gen-lang-client-0975816225
-      - key: GOOGLE_CLOUD_LOCATION
-        value: asia-south2
