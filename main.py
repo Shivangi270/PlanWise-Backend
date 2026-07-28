@@ -32,7 +32,7 @@ logger.info(f"Groq API Key present: {bool(GROQ_API_KEY)}")
 if not GROQ_API_KEY:
     logger.error("GROQ_API_KEY not set in environment variables")
 
-# Initialize Groq client
+# Replace this section:
 def get_groq_client():
     if not GROQ_API_KEY:
         return None
