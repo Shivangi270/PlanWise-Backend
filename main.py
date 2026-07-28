@@ -28,7 +28,6 @@ app.add_middleware(
 # Get API key from environment
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 logger.info(f"DeepSeek API Key present: {bool(DEEPSEEK_API_KEY)}")
-logger.info(f"API Key first 10 chars: {DEEPSEEK_API_KEY[:10] if DEEPSEEK_API_KEY else 'None'}")
 
 if not DEEPSEEK_API_KEY:
     logger.error("DEEPSEEK_API_KEY not set in environment variables")
@@ -40,7 +39,7 @@ def get_deepseek_client():
     try:
         client = OpenAI(
             api_key=DEEPSEEK_API_KEY,
-            base_url="https://api.deepseek.com"
+            base_url="https://api.deepseek.com/v1"
         )
         logger.info("DeepSeek client initialized successfully")
         return client
@@ -60,11 +59,12 @@ class PlanReviewRequest(BaseModel):
     plan: str
     goal: str
 
-# API Endpoints
+# Root endpoint
 @app.get("/")
 def read_root():
     return {"message": "PlanWise API is running!", "status": "healthy"}
 
+# Generate Plan endpoint
 @app.post("/generate-plan")
 async def generate_plan(request: PlanRequest):
     try:
@@ -99,7 +99,7 @@ Make it realistic and actionable. Use emojis for visual appeal.
         
         try:
             response = client.chat.completions.create(
-                model="deepseek-v4-flash",
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": "You are a helpful planning assistant."},
                     {"role": "user", "content": prompt}
@@ -126,6 +126,7 @@ Make it realistic and actionable. Use emojis for visual appeal.
             content={"error": f"Server error: {str(e)}"}
         )
 
+# Review Plan endpoint
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
     try:
@@ -162,7 +163,7 @@ Keep tone encouraging and helpful.
         
         logger.info("Sending review request to DeepSeek API...")
         response = client.chat.completions.create(
-            model="deepseek-v4-flash",
+            model="deepseek-chat",
             messages=[
                 {"role": "system", "content": "You are a helpful planning review assistant."},
                 {"role": "user", "content": prompt}
