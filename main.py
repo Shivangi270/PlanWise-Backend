@@ -26,25 +26,25 @@ app.add_middleware(
 )
 
 # Get API key from environment
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-logger.info(f"DeepSeek API Key present: {bool(DEEPSEEK_API_KEY)}")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+logger.info(f"OpenRouter API Key present: {bool(OPENROUTER_API_KEY)}")
 
-if not DEEPSEEK_API_KEY:
-    logger.error("DEEPSEEK_API_KEY not set in environment variables")
+if not OPENROUTER_API_KEY:
+    logger.error("OPENROUTER_API_KEY not set in environment variables")
 
-# Initialize DeepSeek client with OpenAI SDK
-def get_deepseek_client():
-    if not DEEPSEEK_API_KEY:
+# Initialize OpenRouter client with OpenAI SDK
+def get_openrouter_client():
+    if not OPENROUTER_API_KEY:
         return None
     try:
         client = OpenAI(
-            api_key=DEEPSEEK_API_KEY,
-            base_url="https://api.deepseek.com/v1"
+            api_key=OPENROUTER_API_KEY,
+            base_url="https://openrouter.ai/api/v1"
         )
-        logger.info("DeepSeek client initialized successfully")
+        logger.info("OpenRouter client initialized successfully")
         return client
     except Exception as e:
-        logger.error(f"Failed to initialize DeepSeek client: {str(e)}")
+        logger.error(f"Failed to initialize OpenRouter client: {str(e)}")
         return None
 
 # Models
@@ -68,11 +68,11 @@ def read_root():
 @app.post("/generate-plan")
 async def generate_plan(request: PlanRequest):
     try:
-        client = get_deepseek_client()
+        client = get_openrouter_client()
         if not client:
             return JSONResponse(
                 status_code=500,
-                content={"error": "DeepSeek API key not configured"}
+                content={"error": "OpenRouter API key not configured"}
             )
         
         logger.info(f"Generating plan for goal: {request.goal}")
@@ -95,11 +95,11 @@ Generate a structured plan with:
 Make it realistic and actionable. Use emojis for visual appeal.
 """
         
-        logger.info("Sending request to DeepSeek API...")
+        logger.info("Sending request to OpenRouter API...")
         
         try:
             response = client.chat.completions.create(
-                model="deepseek-chat",
+                model="deepseek/deepseek-v4-flash:free",  # Free DeepSeek model via OpenRouter
                 messages=[
                     {"role": "system", "content": "You are a helpful planning assistant."},
                     {"role": "user", "content": prompt}
@@ -108,14 +108,14 @@ Make it realistic and actionable. Use emojis for visual appeal.
                 max_tokens=2000
             )
             plan_text = response.choices[0].message.content
-            logger.info(f"DeepSeek API response received, length: {len(plan_text)}")
+            logger.info(f"OpenRouter API response received, length: {len(plan_text)}")
             return {"plan": plan_text, "status": "success"}
         except Exception as e:
-            logger.error(f"DeepSeek API call failed: {str(e)}")
+            logger.error(f"OpenRouter API call failed: {str(e)}")
             logger.error(traceback.format_exc())
             return JSONResponse(
                 status_code=500,
-                content={"error": f"DeepSeek API error: {str(e)}"}
+                content={"error": f"OpenRouter API error: {str(e)}"}
             )
         
     except Exception as e:
@@ -130,11 +130,11 @@ Make it realistic and actionable. Use emojis for visual appeal.
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
     try:
-        client = get_deepseek_client()
+        client = get_openrouter_client()
         if not client:
             return JSONResponse(
                 status_code=500,
-                content={"error": "DeepSeek API key not configured"}
+                content={"error": "OpenRouter API key not configured"}
             )
         
         logger.info(f"Reviewing plan for goal: {request.goal}")
@@ -161,9 +161,9 @@ Provide:
 Keep tone encouraging and helpful.
 """
         
-        logger.info("Sending review request to DeepSeek API...")
+        logger.info("Sending review request to OpenRouter API...")
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek/deepseek-v4-flash:free",
             messages=[
                 {"role": "system", "content": "You are a helpful planning review assistant."},
                 {"role": "user", "content": prompt}
@@ -172,7 +172,7 @@ Keep tone encouraging and helpful.
             max_tokens=1000
         )
         review_text = response.choices[0].message.content
-        logger.info("DeepSeek API review response received")
+        logger.info("OpenRouter API review response received")
         
         return {"review": review_text, "status": "success"}
         
