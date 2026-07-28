@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import os
 import traceback
 from typing import Optional
-from openai import OpenAI
+from groq import Groq
 from dotenv import load_dotenv
 import logging
 
@@ -26,25 +26,22 @@ app.add_middleware(
 )
 
 # Get API key from environment
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-logger.info(f"OpenRouter API Key present: {bool(OPENROUTER_API_KEY)}")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+logger.info(f"Groq API Key present: {bool(GROQ_API_KEY)}")
 
-if not OPENROUTER_API_KEY:
-    logger.error("OPENROUTER_API_KEY not set in environment variables")
+if not GROQ_API_KEY:
+    logger.error("GROQ_API_KEY not set in environment variables")
 
-# Initialize OpenRouter client with OpenAI SDK
-def get_openrouter_client():
-    if not OPENROUTER_API_KEY:
+# Initialize Groq client
+def get_groq_client():
+    if not GROQ_API_KEY:
         return None
     try:
-        client = OpenAI(
-            api_key=OPENROUTER_API_KEY,
-            base_url="https://openrouter.ai/api/v1"
-        )
-        logger.info("OpenRouter client initialized successfully")
+        client = Groq(api_key=GROQ_API_KEY)
+        logger.info("Groq client initialized successfully")
         return client
     except Exception as e:
-        logger.error(f"Failed to initialize OpenRouter client: {str(e)}")
+        logger.error(f"Failed to initialize Groq client: {str(e)}")
         return None
 
 # Models
@@ -68,11 +65,11 @@ def read_root():
 @app.post("/generate-plan")
 async def generate_plan(request: PlanRequest):
     try:
-        client = get_openrouter_client()
+        client = get_groq_client()
         if not client:
             return JSONResponse(
                 status_code=500,
-                content={"error": "OpenRouter API key not configured"}
+                content={"error": "Groq API key not configured"}
             )
         
         logger.info(f"Generating plan for goal: {request.goal}")
@@ -95,14 +92,13 @@ Generate a structured plan with:
 Make it realistic and actionable. Use emojis for visual appeal.
 """
         
-        logger.info("Sending request to OpenRouter API...")
+        logger.info("Sending request to Groq API...")
         
-        # Working free models on OpenRouter (as of 2026)
+        # Try multiple Groq models in fallback order
         models_to_try = [
-            "nvidia/nemotron-4-340b-instruct:free",
-            "microsoft/phi-3.5-mini-128k-instruct:free",
-            "qwen/qwen-2.5-72b-instruct:free",
-            "google/gemini-2.0-flash-lite-preview-02-05:free"
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "mixtral-8x7b-32768"
         ]
         
         last_error = None
@@ -127,7 +123,7 @@ Make it realistic and actionable. Use emojis for visual appeal.
                 continue
         
         # If all models fail
-        logger.error("All models failed")
+        logger.error("All Groq models failed")
         return JSONResponse(
             status_code=500,
             content={"error": f"All AI models failed. Last error: {str(last_error)}"}
@@ -145,11 +141,11 @@ Make it realistic and actionable. Use emojis for visual appeal.
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
     try:
-        client = get_openrouter_client()
+        client = get_groq_client()
         if not client:
             return JSONResponse(
                 status_code=500,
-                content={"error": "OpenRouter API key not configured"}
+                content={"error": "Groq API key not configured"}
             )
         
         logger.info(f"Reviewing plan for goal: {request.goal}")
@@ -176,11 +172,11 @@ Provide:
 Keep tone encouraging and helpful.
 """
         
-        logger.info("Sending review request to OpenRouter API...")
+        logger.info("Sending review request to Groq API...")
         
         models_to_try = [
-            "nvidia/nemotron-4-340b-instruct:free",
-            "microsoft/phi-3.5-mini-128k-instruct:free"
+            "llama3-70b-8192",
+            "llama3-8b-8192"
         ]
         
         last_error = None
@@ -203,7 +199,7 @@ Keep tone encouraging and helpful.
                 last_error = e
                 continue
         
-        logger.error("All review models failed")
+        logger.error("All Groq review models failed")
         return JSONResponse(
             status_code=500,
             content={"error": f"All AI models failed for review. Last error: {str(last_error)}"}
