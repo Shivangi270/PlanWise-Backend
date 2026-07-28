@@ -97,12 +97,12 @@ Make it realistic and actionable. Use emojis for visual appeal.
         
         logger.info("Sending request to OpenRouter API...")
         
-        # Try multiple free models in sequence (fallback)
+        # Working free models on OpenRouter (as of 2026)
         models_to_try = [
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "qwen/qwen-2.5-72b-instruct:free",
+            "nvidia/nemotron-4-340b-instruct:free",
             "microsoft/phi-3.5-mini-128k-instruct:free",
-            "google/gemini-2.5-flash-1.5b-preview:free"
+            "qwen/qwen-2.5-72b-instruct:free",
+            "google/gemini-2.0-flash-lite-preview-02-05:free"
         ]
         
         last_error = None
@@ -179,8 +179,7 @@ Keep tone encouraging and helpful.
         logger.info("Sending review request to OpenRouter API...")
         
         models_to_try = [
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "qwen/qwen-2.5-72b-instruct:free",
+            "nvidia/nemotron-4-340b-instruct:free",
             "microsoft/phi-3.5-mini-128k-instruct:free"
         ]
         
