@@ -97,26 +97,41 @@ Make it realistic and actionable. Use emojis for visual appeal.
         
         logger.info("Sending request to OpenRouter API...")
         
-        try:
-            response = client.chat.completions.create(
-                model="deepseek/deepseek-v4-flash:free",  # Free DeepSeek model via OpenRouter
-                messages=[
-                    {"role": "system", "content": "You are a helpful planning assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-            plan_text = response.choices[0].message.content
-            logger.info(f"OpenRouter API response received, length: {len(plan_text)}")
-            return {"plan": plan_text, "status": "success"}
-        except Exception as e:
-            logger.error(f"OpenRouter API call failed: {str(e)}")
-            logger.error(traceback.format_exc())
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"OpenRouter API error: {str(e)}"}
-            )
+        # Try multiple free models in sequence (fallback)
+        models_to_try = [
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+            "microsoft/phi-3.5-mini-128k-instruct:free",
+            "google/gemini-2.5-flash-1.5b-preview:free"
+        ]
+        
+        last_error = None
+        for model in models_to_try:
+            try:
+                logger.info(f"Trying model: {model}")
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful planning assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=2000
+                )
+                plan_text = response.choices[0].message.content
+                logger.info(f"Model {model} succeeded, response length: {len(plan_text)}")
+                return {"plan": plan_text, "status": "success", "model": model}
+            except Exception as e:
+                logger.warning(f"Model {model} failed: {str(e)}")
+                last_error = e
+                continue
+        
+        # If all models fail
+        logger.error("All models failed")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"All AI models failed. Last error: {str(last_error)}"}
+        )
         
     except Exception as e:
         logger.error(f"Unexpected error in generate_plan: {str(e)}")
@@ -162,19 +177,38 @@ Keep tone encouraging and helpful.
 """
         
         logger.info("Sending review request to OpenRouter API...")
-        response = client.chat.completions.create(
-            model="deepseek/deepseek-v4-flash:free",
-            messages=[
-                {"role": "system", "content": "You are a helpful planning review assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=1000
-        )
-        review_text = response.choices[0].message.content
-        logger.info("OpenRouter API review response received")
         
-        return {"review": review_text, "status": "success"}
+        models_to_try = [
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+            "microsoft/phi-3.5-mini-128k-instruct:free"
+        ]
+        
+        last_error = None
+        for model in models_to_try:
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful planning review assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+                review_text = response.choices[0].message.content
+                logger.info(f"Review model {model} succeeded")
+                return {"review": review_text, "status": "success", "model": model}
+            except Exception as e:
+                logger.warning(f"Review model {model} failed: {str(e)}")
+                last_error = e
+                continue
+        
+        logger.error("All review models failed")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"All AI models failed for review. Last error: {str(last_error)}"}
+        )
         
     except Exception as e:
         logger.error(f"Error in review_plan: {str(e)}")
