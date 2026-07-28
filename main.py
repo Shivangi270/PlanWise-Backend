@@ -32,7 +32,7 @@ logger.info(f"Groq API Key present: {bool(GROQ_API_KEY)}")
 if not GROQ_API_KEY:
     logger.error("GROQ_API_KEY not set in environment variables")
 
-# Replace this section:
+# Initialize Groq client
 def get_groq_client():
     if not GROQ_API_KEY:
         return None
@@ -94,11 +94,11 @@ Make it realistic and actionable. Use emojis for visual appeal.
         
         logger.info("Sending request to Groq API...")
         
-        # Try multiple Groq models in fallback order
+        # Updated Groq models (as of 2026)
         models_to_try = [
-            "llama3-70b-8192",
-            "llama3-8b-8192",
-            "mixtral-8x7b-32768"
+            "llama-3.3-70b-versatile",   # New replacement for llama3-70b-8192
+            "llama-3.1-8b-instant",      # New replacement for llama3-8b-8192
+            "gemma2-9b-it"               # Google's open model
         ]
         
         last_error = None
@@ -175,8 +175,8 @@ Keep tone encouraging and helpful.
         logger.info("Sending review request to Groq API...")
         
         models_to_try = [
-            "llama3-70b-8192",
-            "llama3-8b-8192"
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant"
         ]
         
         last_error = None
