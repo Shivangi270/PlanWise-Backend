@@ -94,11 +94,11 @@ Make it realistic and actionable. Use emojis for visual appeal.
         
         logger.info("Sending request to Groq API...")
         
-        # Updated Groq models - removed decommissioned llama-3.3-70b-versatile
+        # Updated active Groq models
         models_to_try = [
-            "llama-3.1-8b-instant",      # Fast, good quality
-            "gemma2-9b-it",               # Google's open model
-            "mixtral-8x7b-32768"          # Mistral's model
+            "openai/gpt-oss-120b",   # Recommended replacement
+            "openai/gpt-oss-20b",    # Faster, smaller alternative
+            "llama-3.3-70b-versatile" # Still active
         ]
         
         last_error = None
@@ -175,8 +175,9 @@ Keep tone encouraging and helpful.
         logger.info("Sending review request to Groq API...")
         
         models_to_try = [
-            "llama-3.1-8b-instant",
-            "gemma2-9b-it"
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "llama-3.3-70b-versatile"
         ]
         
         last_error = None
