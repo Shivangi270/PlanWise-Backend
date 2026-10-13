@@ -84,21 +84,28 @@ Deadline: {request.deadline} days
 Daily Available Hours: {request.daily_hours} hours
 Topics: {request.topics if request.topics else 'Not specified'}
 
+FORMATTING REQUIREMENTS (VERY IMPORTANT):
+- DO NOT use markdown tables. They do not display well on mobile screens.
+- Use bullet points, numbered lists, or simple text sections instead.
+- Use **bold** for section headings and key terms.
+- Use emojis sparingly for visual appeal.
+- Keep lines short (under 60 characters where possible).
+- Leave a blank line between sections for readability.
+
 Generate a structured plan with:
-1. Weekly breakdown of topics
-2. Daily schedule
+1. Weekly breakdown of topics (use bullet points, not tables)
+2. Daily schedule (use bullet points, not tables)
 3. Tips for success
 
-Make it realistic and actionable. Use emojis for visual appeal.
+Make it realistic and actionable.
 """
         
         logger.info("Sending request to Groq API...")
         
-        # Updated active Groq models
         models_to_try = [
-            "openai/gpt-oss-120b",   # Recommended replacement
-            "openai/gpt-oss-20b",    # Faster, smaller alternative
-            "llama-3.3-70b-versatile" # Still active
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "llama-3.3-70b-versatile"
         ]
         
         last_error = None
@@ -108,7 +115,7 @@ Make it realistic and actionable. Use emojis for visual appeal.
                 response = client.chat.completions.create(
                     model=model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful planning assistant."},
+                        {"role": "system", "content": "You are a helpful planning assistant. Always format output for mobile screens using bullet points and lists, never tables."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
@@ -122,7 +129,6 @@ Make it realistic and actionable. Use emojis for visual appeal.
                 last_error = e
                 continue
         
-        # If all models fail
         logger.error("All Groq models failed")
         return JSONResponse(
             status_code=500,
@@ -164,6 +170,12 @@ Analyze:
 3. Is the workload balanced?
 4. Are there any gaps or overlaps?
 
+FORMATTING REQUIREMENTS:
+- DO NOT use markdown tables.
+- Use bullet points and short paragraphs.
+- Use **bold** for section headings.
+- Keep lines short for mobile readability.
+
 Provide:
 - Reality Check: What's unrealistic or challenging?
 - Suggestions: Specific improvements
@@ -186,7 +198,7 @@ Keep tone encouraging and helpful.
                 response = client.chat.completions.create(
                     model=model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful planning review assistant."},
+                        {"role": "system", "content": "You are a helpful planning review assistant. Always format output for mobile screens using bullet points and lists, never tables."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
