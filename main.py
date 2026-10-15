@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 import os
 import traceback
@@ -25,14 +25,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get API key from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 logger.info(f"Groq API Key present: {bool(GROQ_API_KEY)}")
 
 if not GROQ_API_KEY:
     logger.error("GROQ_API_KEY not set in environment variables")
 
-# Initialize Groq client
+
 def get_groq_client():
     if not GROQ_API_KEY:
         return None
@@ -44,7 +43,7 @@ def get_groq_client():
         logger.error(f"Failed to initialize Groq client: {str(e)}")
         return None
 
-# Models
+
 class PlanRequest(BaseModel):
     goal: str
     deadline: int
@@ -52,29 +51,29 @@ class PlanRequest(BaseModel):
     role: Optional[str] = "student"
     topics: Optional[str] = ""
 
+
 class PlanReviewRequest(BaseModel):
     plan: str
     goal: str
 
-# Root endpoint
+
 @app.get("/")
 def read_root():
     return {"message": "PlanWise API is running!", "status": "healthy"}
 
-# Generate Plan endpoint
+
 @app.post("/generate-plan")
 async def generate_plan(request: PlanRequest):
-    try:
-        client = get_groq_client()
-        if not client:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Groq API key not configured"}
-            )
-        
-        logger.info(f"Generating plan for goal: {request.goal}")
-        
-        prompt = f"""
+    client = get_groq_client()
+    if not client:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Groq API key not configured"}
+        )
+
+    logger.info(f"Generating plan (streaming) for goal: {request.goal}")
+
+    prompt = f"""
 You are PlanWise, a friendly and intelligent AI planning assistant.
 Create a detailed study/plan for the following goal:
 
@@ -99,64 +98,58 @@ Generate a structured plan with:
 
 Make it realistic and actionable.
 """
-        
-        logger.info("Sending request to Groq API...")
-        
-        models_to_try = [
-            "openai/gpt-oss-120b",
-            "openai/gpt-oss-20b",
-            "llama-3.3-70b-versatile"
-        ]
-        
+
+    models_to_try = [
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile"
+    ]
+
+    def stream_generator():
         last_error = None
         for model in models_to_try:
             try:
-                logger.info(f"Trying model: {model}")
-                response = client.chat.completions.create(
+                logger.info(f"Trying model (streaming): {model}")
+                stream = client.chat.completions.create(
                     model=model,
                     messages=[
                         {"role": "system", "content": "You are a helpful planning assistant. Always format output for mobile screens using bullet points and lists, never tables."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
-                    max_tokens=2000
+                    max_tokens=2000,
+                    stream=True
                 )
-                plan_text = response.choices[0].message.content
-                logger.info(f"Model {model} succeeded, response length: {len(plan_text)}")
-                return {"plan": plan_text, "status": "success", "model": model}
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                logger.info(f"Model {model} streaming completed")
+                return
             except Exception as e:
-                logger.warning(f"Model {model} failed: {str(e)}")
+                logger.warning(f"Model {model} streaming failed: {str(e)}")
                 last_error = e
                 continue
-        
-        logger.error("All Groq models failed")
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"All AI models failed. Last error: {str(last_error)}"}
-        )
-        
-    except Exception as e:
-        logger.error(f"Unexpected error in generate_plan: {str(e)}")
-        logger.error(traceback.format_exc())
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Server error: {str(e)}"}
-        )
+        logger.error("All Groq models failed for streaming")
+        yield f"\n\n❌ Error: All AI models failed. {str(last_error)}"
 
-# Review Plan endpoint
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/plain; charset=utf-8"
+    )
+
+
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
-    try:
-        client = get_groq_client()
-        if not client:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Groq API key not configured"}
-            )
-        
-        logger.info(f"Reviewing plan for goal: {request.goal}")
-        
-        prompt = f"""
+    client = get_groq_client()
+    if not client:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Groq API key not configured"}
+        )
+
+    logger.info(f"Reviewing plan (streaming) for goal: {request.goal}")
+
+    prompt = f"""
 You are PlanWise Review AI. Critically analyze the following plan:
 
 Goal: {request.goal}
@@ -175,6 +168,7 @@ FORMATTING REQUIREMENTS:
 - Use bullet points and short paragraphs.
 - Use **bold** for section headings.
 - Keep lines short for mobile readability.
+- Leave a blank line between sections.
 
 Provide:
 - Reality Check: What's unrealistic or challenging?
@@ -183,48 +177,43 @@ Provide:
 
 Keep tone encouraging and helpful.
 """
-        
-        logger.info("Sending review request to Groq API...")
-        
-        models_to_try = [
-            "openai/gpt-oss-120b",
-            "openai/gpt-oss-20b",
-            "llama-3.3-70b-versatile"
-        ]
-        
+
+    models_to_try = [
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile"
+    ]
+
+    def stream_generator():
         last_error = None
         for model in models_to_try:
             try:
-                response = client.chat.completions.create(
+                stream = client.chat.completions.create(
                     model=model,
                     messages=[
                         {"role": "system", "content": "You are a helpful planning review assistant. Always format output for mobile screens using bullet points and lists, never tables."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
-                    max_tokens=1000
+                    max_tokens=1000,
+                    stream=True
                 )
-                review_text = response.choices[0].message.content
-                logger.info(f"Review model {model} succeeded")
-                return {"review": review_text, "status": "success", "model": model}
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                logger.info(f"Review model {model} streaming completed")
+                return
             except Exception as e:
-                logger.warning(f"Review model {model} failed: {str(e)}")
+                logger.warning(f"Review model {model} streaming failed: {str(e)}")
                 last_error = e
                 continue
-        
-        logger.error("All Groq review models failed")
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"All AI models failed for review. Last error: {str(last_error)}"}
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in review_plan: {str(e)}")
-        logger.error(traceback.format_exc())
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Review error: {str(e)}"}
-        )
+        yield f"\n\n❌ Error: All AI models failed. {str(last_error)}"
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/plain; charset=utf-8"
+    )
+
 
 if __name__ == "__main__":
     import uvicorn
