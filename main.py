@@ -91,9 +91,19 @@ FORMATTING REQUIREMENTS (VERY IMPORTANT):
 - Keep lines short (under 60 characters where possible).
 - Leave a blank line between sections for readability.
 
+TIME SCHEDULING RULES (CRITICAL - READ CAREFULLY):
+1. If the user specifies a start and end clock time in their goal or topics (e.g., "study from 9am to 2pm"), then use actual clock times (e.g., 09:00 - 09:30, 09:30 - 10:00).
+2. If the user ONLY specifies total hours (e.g., "5 hours") and does NOT specify a start time, you MUST use a countdown/relative timer starting from 00:00.
+   - Example for 5 hours: 
+     - 00:00 - 01:00 → Deep Work Session 1
+     - 01:00 - 01:15 → Break
+     - 01:15 - 02:15 → Deep Work Session 2
+     - ... and so on until 05:00.
+3. DO NOT assume the day starts at 9:00 AM or any other arbitrary time unless the user explicitly asked for it.
+
 Generate a structured plan with:
 1. Weekly breakdown of topics (use bullet points, not tables)
-2. Daily schedule (use bullet points, not tables)
+2. Daily schedule (follow the TIME SCHEDULING RULES above)
 3. Tips for success
 
 Make it realistic and actionable.
@@ -113,7 +123,7 @@ Make it realistic and actionable.
                 stream = client.chat.completions.create(
                     model=model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful planning assistant. Always format output for mobile screens using bullet points and lists, never tables."},
+                        {"role": "system", "content": "You are a helpful planning assistant. Always format output for mobile screens using bullet points and lists, never tables. Follow the TIME SCHEDULING RULES strictly."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
