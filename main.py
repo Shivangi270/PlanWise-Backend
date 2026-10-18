@@ -3,11 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 import os
-import traceback
+import logging
 from typing import Optional
 from groq import Groq
 from dotenv import load_dotenv
-import logging
+
+# Import our custom prompts
+from prompts.common import get_common_rules
+from prompts.student import get_student_rules
+from prompts.professional import get_professional_rules
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -28,17 +32,11 @@ app.add_middleware(
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 logger.info(f"Groq API Key present: {bool(GROQ_API_KEY)}")
 
-if not GROQ_API_KEY:
-    logger.error("GROQ_API_KEY not set in environment variables")
-
-
 def get_groq_client():
     if not GROQ_API_KEY:
         return None
     try:
-        client = Groq(api_key=GROQ_API_KEY)
-        logger.info("Groq client initialized successfully")
-        return client
+        return Groq(api_key=GROQ_API_KEY)
     except Exception as e:
         logger.error(f"Failed to initialize Groq client: {str(e)}")
         return None
@@ -66,64 +64,49 @@ def read_root():
 async def generate_plan(request: PlanRequest):
     client = get_groq_client()
     if not client:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Groq API key not configured"}
-        )
+        return JSONResponse(status_code=500, content={"error": "Groq API key not configured"})
 
-    logger.info(f"Generating plan (streaming) for goal: {request.goal}")
+    logger.info(f"Generating plan (streaming) for role: {request.role}")
 
+    # 1. Get the common rules
+    common_rules = get_common_rules()
+
+    # 2. Get the role-specific rules
+    is_student = request.role.lower() == "student"
+    if is_student:
+        role_rules = get_student_rules()
+        system_persona = "You are a friendly, encouraging study tutor and academic coach."
+    else:
+        role_rules = get_professional_rules()
+        system_persona = "You are an elite productivity consultant and executive coach."
+
+    # 3. Combine everything into the final prompt
     prompt = f"""
-You are PlanWise, a friendly and intelligent AI planning assistant.
-Create a detailed study/plan for the following goal:
+{role_rules}
 
+{common_rules}
+
+USER DETAILS:
 Role: {request.role}
 Goal: {request.goal}
 Deadline: {request.deadline} days
 Daily Available Hours: {request.daily_hours} hours
-Topics: {request.topics if request.topics else 'Not specified'}
+Topics/Tasks: {request.topics if request.topics else 'Not specified'}
 
-FORMATTING REQUIREMENTS (VERY IMPORTANT):
-- DO NOT use markdown tables. They do not display well on mobile screens.
-- Use bullet points, numbered lists, or simple text sections instead.
-- Use **bold** for section headings and key terms.
-- Use emojis sparingly for visual appeal.
-- Keep lines short (under 60 characters where possible).
-- Leave a blank line between sections for readability.
-
-TIME SCHEDULING RULES (CRITICAL - READ CAREFULLY):
-1. If the user specifies a start and end clock time in their goal or topics (e.g., "study from 9am to 2pm"), then use actual clock times (e.g., 09:00 - 09:30, 09:30 - 10:00).
-2. If the user ONLY specifies total hours (e.g., "5 hours") and does NOT specify a start time, you MUST use a countdown/relative timer starting from 00:00.
-   - Example for 5 hours: 
-     - 00:00 - 01:00 → Deep Work Session 1
-     - 01:00 - 01:15 → Break
-     - 01:15 - 02:15 → Deep Work Session 2
-     - ... and so on until 05:00.
-3. DO NOT assume the day starts at 9:00 AM or any other arbitrary time unless the user explicitly asked for it.
-
-Generate a structured plan with:
-1. Weekly breakdown of topics (use bullet points, not tables)
-2. Daily schedule (follow the TIME SCHEDULING RULES above)
-3. Tips for success
-
-Make it realistic and actionable.
+Create the plan now, strictly following all formatting and time rules.
 """
 
-    models_to_try = [
-        "openai/gpt-oss-120b",
-        "openai/gpt-oss-20b",
-        "llama-3.3-70b-versatile"
-    ]
+    models_to_try = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]
 
     def stream_generator():
         last_error = None
         for model in models_to_try:
             try:
-                logger.info(f"Trying model (streaming): {model}")
+                logger.info(f"Trying model: {model}")
                 stream = client.chat.completions.create(
                     model=model,
                     messages=[
-                        {"role": "system", "content": "You are a helpful planning assistant. Always format output for mobile screens using bullet points and lists, never tables. Follow the TIME SCHEDULING RULES strictly."},
+                        {"role": "system", "content": system_persona},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.7,
@@ -133,32 +116,25 @@ Make it realistic and actionable.
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
-                logger.info(f"Model {model} streaming completed")
+                logger.info(f"Model {model} completed")
                 return
             except Exception as e:
-                logger.warning(f"Model {model} streaming failed: {str(e)}")
+                logger.warning(f"Model {model} failed: {str(e)}")
                 last_error = e
                 continue
-        logger.error("All Groq models failed for streaming")
+        
         yield f"\n\n❌ Error: All AI models failed. {str(last_error)}"
 
-    return StreamingResponse(
-        stream_generator(),
-        media_type="text/plain; charset=utf-8"
-    )
+    return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
 
 
 @app.post("/review-plan")
 async def review_plan(request: PlanReviewRequest):
     client = get_groq_client()
     if not client:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Groq API key not configured"}
-        )
+        return JSONResponse(status_code=500, content={"error": "Groq API key not configured"})
 
-    logger.info(f"Reviewing plan (streaming) for goal: {request.goal}")
-
+    # Review prompt (kept in main.py for now since it's relatively short and generic)
     prompt = f"""
 You are PlanWise Review AI. Critically analyze the following plan:
 
@@ -188,11 +164,7 @@ Provide:
 Keep tone encouraging and helpful.
 """
 
-    models_to_try = [
-        "openai/gpt-oss-120b",
-        "openai/gpt-oss-20b",
-        "llama-3.3-70b-versatile"
-    ]
+    models_to_try = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]
 
     def stream_generator():
         last_error = None
@@ -200,10 +172,7 @@ Keep tone encouraging and helpful.
             try:
                 stream = client.chat.completions.create(
                     model=model,
-                    messages=[
-                        {"role": "system", "content": "You are a helpful planning review assistant. Always format output for mobile screens using bullet points and lists, never tables."},
-                        {"role": "user", "content": prompt}
-                    ],
+                    messages=[{"role": "user", "content": prompt}],
                     temperature=0.7,
                     max_tokens=1000,
                     stream=True
@@ -211,18 +180,13 @@ Keep tone encouraging and helpful.
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
-                logger.info(f"Review model {model} streaming completed")
                 return
             except Exception as e:
-                logger.warning(f"Review model {model} streaming failed: {str(e)}")
                 last_error = e
                 continue
         yield f"\n\n❌ Error: All AI models failed. {str(last_error)}"
 
-    return StreamingResponse(
-        stream_generator(),
-        media_type="text/plain; charset=utf-8"
-    )
+    return StreamingResponse(stream_generator(), media_type="text/plain; charset=utf-8")
 
 
 if __name__ == "__main__":
