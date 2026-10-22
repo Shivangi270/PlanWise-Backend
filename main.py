@@ -48,6 +48,7 @@ class PlanRequest(BaseModel):
     daily_hours: int
     role: Optional[str] = "student"
     topics: Optional[str] = ""
+    plan_type: Optional[str] = "Read & Practice (Both)" # NEW FIELD
 
 
 class PlanReviewRequest(BaseModel):
@@ -66,7 +67,7 @@ async def generate_plan(request: PlanRequest):
     if not client:
         return JSONResponse(status_code=500, content={"error": "Groq API key not configured"})
 
-    logger.info(f"Generating plan (streaming) for role: {request.role}")
+    logger.info(f"Generating plan for role: {request.role}, type: {request.plan_type}")
 
     # 1. Get the common rules
     common_rules = get_common_rules()
@@ -74,10 +75,10 @@ async def generate_plan(request: PlanRequest):
     # 2. Get the role-specific rules
     is_student = request.role.lower() == "student"
     if is_student:
-        role_rules = get_student_rules()
+        role_rules = get_student_rules(request.plan_type) 
         system_persona = "You are a friendly, encouraging study tutor and academic coach."
     else:
-        role_rules = get_professional_rules()
+        role_rules = get_professional_rules(request.plan_type)
         system_persona = "You are an elite productivity consultant and executive coach."
 
     # 3. Combine everything into the final prompt
@@ -134,7 +135,6 @@ async def review_plan(request: PlanReviewRequest):
     if not client:
         return JSONResponse(status_code=500, content={"error": "Groq API key not configured"})
 
-    # Review prompt (kept in main.py for now since it's relatively short and generic)
     prompt = f"""
 You are PlanWise Review AI. Critically analyze the following plan:
 
