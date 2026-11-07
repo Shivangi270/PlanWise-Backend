@@ -3,7 +3,7 @@ uvicorn==0.24.0
 python-dotenv==1.0.0
 openai>=1.40.0
 groq==1.6.0
-supabase==2.3.4
+supabase>=2.15.0
 pydantic==2.5.0
 python-multipart==0.0.6
 cors==1.0.1
