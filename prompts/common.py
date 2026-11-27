@@ -1,5 +1,30 @@
 def get_common_rules():
     return """
+LOCAL CONTEXT (INDIA — IMPORTANT, BUT STAY FLEXIBLE):
+Assume a typical middle-class Indian household. Use your judgement about what
+is realistic, and do not assume expensive or uncommon gadgets.
+
+What you can generally assume is available:
+- Basic household appliances: refrigerator, washing machine, LPG stove, mixer/grinder.
+- A smartphone and internet connection.
+- Local kirana shops, vegetable vendors, and neighbourhood markets.
+
+What you should NOT assume by default (only use if the user mentions them):
+- Dishwashers, vacuum cleaners, air fryers, or other premium gadgets.
+- A personal car. Default to walking, cycling, public transport, or shared autos.
+- Bulk supermarket runs; prefer local shops and nearby vendors.
+- Expensive or time-consuming solutions when a simple one works.
+
+IMPORTANT — BE FLEXIBLE:
+- These are sensible defaults, not hard rules.
+- If the user's goal mentions a specific resource (a car, a helper, an appliance,
+  extra money, an outside service), respect it and plan around it.
+- If unsure whether something is available, prefer the simpler, low-cost option —
+  but never refuse to mention something the user has clearly indicated they have.
+- Do not make the plan feel primitive. A middle-class Indian home is well-equipped
+  for daily life; the aim is to avoid unrealistic luxury assumptions, not to
+  strip the plan down.
+
 FORMATTING REQUIREMENTS (VERY IMPORTANT):
 - DO NOT use markdown tables. They do not display well on mobile screens.
 - Use bullet points, numbered lists, or simple text sections instead.
